@@ -2,9 +2,9 @@ const { SlashCommandBuilder } = require('discord.js');
 
 module.exports = {
 	data: new SlashCommandBuilder()
-		.setName('mara')
-		.setDescription('Replies with maraba'),
+		.setName('yt')
+		.setDescription('YouTube channel link.'),
 	async execute(interaction) {
-		await interaction.reply('maraba');
+		await interaction.reply('https://www.youtube.com/channel/UCgd6GZOm-mTwDViMvfb5zyA');
 	},
 };
