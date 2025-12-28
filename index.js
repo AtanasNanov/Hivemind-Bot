@@ -13,7 +13,7 @@ const client = new Client({
     partials: ['CHANNEL']
 });
 
-
+//allocating memory for commands and command cooldowns
 client.cooldowns = new Collection();
 client.commands = new Collection();
 
@@ -34,6 +34,7 @@ for (const folder of commandFolders) {
     }
 }
 
+//waiting for the bot to login and is ready to operate
 client.once(Events.ClientReady, async c => {
     console.log(`Ready! Logged in as ${c.user.tag}`);
     client.user.setActivity('quotes..', { type: 'LISTENING' });
@@ -121,6 +122,7 @@ client.on(Events.InteractionCreate, async interaction => {
     }
 });
 
+// initializing database and tables
 const db = new sqlite3.Database('./quotesv2.db', err => {
     if (err) {
         console.error('Error opening database:', err.message);
@@ -142,6 +144,7 @@ const db = new sqlite3.Database('./quotesv2.db', err => {
     }
 });
 
+//message response for !quote command which fetches a quote
 client.on('messageCreate', message => {
     if (message.content === '!quote') {
         const dbInstance = new sqlite3.Database('./quotesv2.db');
@@ -166,6 +169,7 @@ client.on('messageCreate', message => {
         // Ignore bot messages
         if (message.author.bot) return;
       
+        //response for the command !guess
         if (message.content === '!guess') {
             const dbInstance = new sqlite3.Database('./quotesv2.db');
             dbInstance.get('SELECT quote, author, date FROM quotes ORDER BY RANDOM() LIMIT 1', async (err, row) => {
@@ -190,6 +194,8 @@ client.on('messageCreate', message => {
                 dbInstance.close();
             });
         }
+
+        // command !searchquote
         if (message.content.startsWith('!searchquote')) {
 
             const args = message.content.split(' ').slice(1);
