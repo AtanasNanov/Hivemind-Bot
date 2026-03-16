@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const sqlite3 = require('sqlite3').verbose();
 const { Client, Collection, Events, GatewayIntentBits } = require('discord.js');
-const { token } = require('./config.json');
+const token = process.env.DISCORD_TOKEN;
 
 const client = new Client({
     intents: [
@@ -78,7 +78,7 @@ client.once(Events.ClientReady, async c => {
         }
 });
 
-client.login(token);
+client.login(process.env.DISCORD_TOKEN);
 
 client.on(Events.InteractionCreate, async interaction => {
     if (!interaction.isChatInputCommand()) return;
@@ -88,7 +88,7 @@ client.on(Events.InteractionCreate, async interaction => {
         console.error(`No command matching ${interaction.commandName} was found.`);
         return;
     }
-
+    
     if (!client.cooldowns.has(command.data.name)) {
         client.cooldowns.set(command.data.name, new Collection());
     }
@@ -116,7 +116,8 @@ client.on(Events.InteractionCreate, async interaction => {
         console.error(error);
         if (interaction.replied || interaction.deferred) {
             await interaction.followUp({ content: 'There was an error while executing this command!', ephemeral: true });
-        } else {
+        } 
+        else {
             await interaction.reply({ content: 'There was an error while executing this command!', ephemeral: true });
         }
     }
@@ -137,7 +138,8 @@ const db = new sqlite3.Database('./quotesv2.db', err => {
         )`, err => {
             if (err) {
                 console.error('Error creating table:', err.message);
-            } else {
+            } 
+            else {
                 console.log('Quotes table ready.');
             }
         });
@@ -159,7 +161,8 @@ client.on('messageCreate', message => {
                     message.channel.send(
                         `"${row.quote}" - ${row.author} (${row.date})\n*Posted by:* ${poster}`
                     );
-                } else {
+                } 
+                else {
                     message.channel.send("No quotes found in the database.");
                 }
                 dbInstance.close();
@@ -172,7 +175,7 @@ client.on('messageCreate', message => {
         //response for the command !guess
         if (message.content === '!guess') {
             const dbInstance = new sqlite3.Database('./quotesv2.db');
-            dbInstance.get('SELECT quote, author, date FROM quotes ORDER BY RANDOM() LIMIT 1', async (err, row) => {
+            dbInstance.get('SELECT quote, author, date, poster FROM quotes ORDER BY RANDOM() LIMIT 1', async (err, row) => {
                 if (err) {
                     console.error('Error fetching quote:', err.message);
                     dbInstance.close();
@@ -180,15 +183,17 @@ client.on('messageCreate', message => {
                 }
                 if (row) {
                     await message.channel.send(`Guess the author for this quote:\n\n"${row.quote}"`);
-                
+
+                    const poster = row.poster || "Unknown";
                     const filter = m => m.author.id === message.author.id;
                     try {
                         await message.channel.awaitMessages({ filter, max: 1, time: 45000, errors: ['time'] });
-                        await message.channel.send(`The correct answer is: ${row.author}`);
+                        await message.channel.send(`The correct answer is: ${row.author})\n*Posted by:* ${poster}`);
                     } catch (error) {
                         await message.channel.send(`Time is up! The correct answer is: ${row.author}`);
                     }
-                } else {
+                } 
+                else {
                     await message.channel.send('No quotes found in the database.');
                 }
                 dbInstance.close();
@@ -219,7 +224,8 @@ client.on('messageCreate', message => {
                 } else {
                     if (rows.length === 0) {
                         message.channel.send(`No quotes found matching "${searchTerm}".`);
-                    } else {
+                    } 
+                    else {
                         let response = `Found ${rows.length} quote(s):\n`;
                         rows.forEach((row, index) => {
                             response += `**${index + 1}.** "${row.quote}" - ${row.author} (${row.date})\n`;
@@ -231,3 +237,4 @@ client.on('messageCreate', message => {
             });
         }
 });
+    
