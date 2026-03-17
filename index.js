@@ -13,6 +13,16 @@ const client = new Client({
     partials: ['CHANNEL']
 });
 
+//simple web server added so it can be deployed on render without it being gutted for inactivity
+const express = require("express");
+const app = express();
+
+app.get("/", (req, res) => {
+  res.send("Bot is alive");
+});
+
+app.listen(3000, () => console.log("Web server running"));
+
 //allocating memory for commands and command cooldowns
 client.cooldowns = new Collection();
 client.commands = new Collection();
