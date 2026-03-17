@@ -17,11 +17,15 @@ const client = new Client({
 const express = require("express");
 const app = express();
 
+const PORT = process.env.PORT || 3000;
+
 app.get("/", (req, res) => {
   res.send("Bot is alive");
 });
 
-app.listen(3000, () => console.log("Web server running"));
+app.listen(PORT, () => {
+  console.log(`Web server running on port ${PORT}`);
+});
 
 //allocating memory for commands and command cooldowns
 client.cooldowns = new Collection();
