@@ -92,8 +92,10 @@ client.once(Events.ClientReady, async c => {
         }
 });
 
+//takes discord token as env
 client.login(process.env.DISCORD_TOKEN);
 
+//handling slash commands and their cooldowns
 client.on(Events.InteractionCreate, async interaction => {
     if (!interaction.isChatInputCommand()) return;
     const command = client.commands.get(interaction.commandName);
@@ -176,6 +178,7 @@ const db = new sqlite3.Database('./quotesv2.db', err => {
     }
 });
 
+//function to increment quote usage for stats command
 function incrementQuoteUsage(dbInstance, quoteId, command) {
     if (!quoteId || !command) return;
 
