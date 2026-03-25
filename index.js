@@ -16,11 +16,10 @@ const client = new Client({
 //simple web server added so it can be deployed on render without it being gutted for inactivity
 const express = require("express");
 const app = express();
-
 const PORT = process.env.PORT || 3000;
 
 app.get("/", (req, res) => {
-  res.send("Bot is alive");
+  res.send("Bot is currently working");
 });
 
 app.listen(PORT, () => {
@@ -53,7 +52,8 @@ client.once(Events.ClientReady, async c => {
     console.log(`Ready! Logged in as ${c.user.tag}`);
     client.user.setActivity('quotes..', { type: 'LISTENING' });
         await new Promise(resolve => setTimeout(resolve, 3000));
-    
+
+        //id of the #quotes channel 
         const channelId = '478595163376320553'; 
         try {
             const channel = await client.channels.fetch(channelId, { force: true });
@@ -143,34 +143,78 @@ const db = new sqlite3.Database('./quotesv2.db', err => {
         console.error('Error opening database:', err.message);
     } else {
         console.log('Connected to the SQLite database.');
-        db.run(`CREATE TABLE IF NOT EXISTS quotes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            quote TEXT NOT NULL,
-            author TEXT NOT NULL,
-            date TEXT NOT NULL,
-            poster TEXT
-        )`, err => {
-            if (err) {
-                console.error('Error creating table:', err.message);
-            } 
-            else {
-                console.log('Quotes table ready.');
-            }
+        db.serialize(() => {
+            db.run(`CREATE TABLE IF NOT EXISTS quotes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                quote TEXT NOT NULL,
+                author TEXT NOT NULL,
+                date TEXT NOT NULL,
+                poster TEXT
+            )`, err => {
+                if (err) {
+                    console.error('Error creating table:', err.message);
+                } 
+                else {
+                    console.log('Quotes table ready.');
+                }
+            });
+
+            db.run(`CREATE TABLE IF NOT EXISTS quote_usage (
+                quote_id INTEGER NOT NULL,
+                command TEXT NOT NULL,
+                count INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (quote_id, command),
+                FOREIGN KEY (quote_id) REFERENCES quotes(id)
+            )`, err => {
+                if (err) {
+                    console.error('Error creating usage table:', err.message);
+                } else {
+                    console.log('Quote usage table ready.');
+                }
+            });
         });
     }
 });
 
+function incrementQuoteUsage(dbInstance, quoteId, command) {
+    if (!quoteId || !command) return;
+
+    dbInstance.run(
+        'INSERT OR IGNORE INTO quote_usage (quote_id, command, count) VALUES (?, ?, 0)',
+        [quoteId, command],
+        err => {
+            if (err) {
+                console.error('Error initializing quote usage:', err.message);
+                return;
+            }
+            dbInstance.run(
+                'UPDATE quote_usage SET count = count + 1 WHERE quote_id = ? AND command = ?',
+                [quoteId, command],
+                updateErr => {
+                    if (updateErr) {
+                        console.error('Error updating quote usage:', updateErr.message);
+                    }
+                },
+            );
+        },
+    );
+}
+
 //message response for !quote command which fetches a quote
 client.on('messageCreate', message => {
+    // Ignore bot messages
+    if (message.author.bot) return;
+
     if (message.content === '!quote') {
         const dbInstance = new sqlite3.Database('./quotesv2.db');
         dbInstance.get(
-            'SELECT quote, author, date, poster FROM quotes ORDER BY RANDOM() LIMIT 1', 
+            'SELECT id, quote, author, date, poster FROM quotes ORDER BY RANDOM() LIMIT 1', 
             (err, row) => {
                 if (err) {
                     console.error('Error fetching quote:', err.message);
                     message.channel.send("There was an error fetching the quote.");
                 } else if (row) {
+                    incrementQuoteUsage(dbInstance, row.id, 'quote');
                     const poster = row.poster || "Unknown";
                     message.channel.send(
                         `"${row.quote}" - ${row.author} (${row.date})\n*Posted by:* ${poster}`
@@ -183,19 +227,18 @@ client.on('messageCreate', message => {
             }
         );
     }
-        // Ignore bot messages
-        if (message.author.bot) return;
       
         //response for the command !guess
         if (message.content === '!guess') {
             const dbInstance = new sqlite3.Database('./quotesv2.db');
-            dbInstance.get('SELECT quote, author, date, poster FROM quotes ORDER BY RANDOM() LIMIT 1', async (err, row) => {
+            dbInstance.get('SELECT id, quote, author, date, poster FROM quotes ORDER BY RANDOM() LIMIT 1', async (err, row) => {
                 if (err) {
                     console.error('Error fetching quote:', err.message);
                     dbInstance.close();
                     return;
                 }
                 if (row) {
+                    incrementQuoteUsage(dbInstance, row.id, 'guess');
                     await message.channel.send(`Guess the author for this quote:\n\n"${row.quote}"`);
 
                     const poster = row.poster || "Unknown";
@@ -248,6 +291,83 @@ client.on('messageCreate', message => {
                     }
                 }
                 dbInstance.close();
+            });
+        }
+
+        // command !stats
+        if (message.content === '!stats') {
+            const dbInstance = new sqlite3.Database('./quotesv2.db');
+
+            const totalsQuery = `
+                SELECT command, SUM(count) AS total
+                FROM quote_usage
+                GROUP BY command
+            `;
+
+            const topQuery = `
+                SELECT q.quote, q.author, q.date, u.count
+                FROM quote_usage u
+                JOIN quotes q ON q.id = u.quote_id
+                WHERE u.command = ?
+                ORDER BY u.count DESC
+                LIMIT 10
+            `;
+
+            dbInstance.all(totalsQuery, (totalsErr, totalsRows) => {
+                if (totalsErr) {
+                    console.error('Error fetching stats totals:', totalsErr.message);
+                    message.channel.send('There was an error fetching stats.');
+                    dbInstance.close();
+                    return;
+                }
+
+                const totals = new Map();
+                (totalsRows || []).forEach(r => totals.set(r.command, r.total ?? 0));
+                const quoteTotal = totals.get('quote') ?? 0;
+                const guessTotal = totals.get('guess') ?? 0;
+
+                dbInstance.all(topQuery, ['quote'], (topQuoteErr, topQuoteRows) => {
+                    if (topQuoteErr) {
+                        console.error('Error fetching top quote stats:', topQuoteErr.message);
+                        message.channel.send('There was an error fetching stats.');
+                        dbInstance.close();
+                        return;
+                    }
+
+                    dbInstance.all(topQuery, ['guess'], (topGuessErr, topGuessRows) => {
+                        if (topGuessErr) {
+                            console.error('Error fetching top guess stats:', topGuessErr.message);
+                            message.channel.send('There was an error fetching stats.');
+                            dbInstance.close();
+                            return;
+                        }
+
+                        let response = `**Stats**\n`;
+                        response += `Total served via !quote: **${quoteTotal}**\n`;
+                        response += `Total served via !guess: **${guessTotal}**\n`;
+
+                        if (topQuoteRows?.length) {
+                            response += `\n**Top via !quote**\n`;
+                            topQuoteRows.forEach((row, index) => {
+                                response += `**${index + 1}.** (${row.count}) "${row.quote}" - ${row.author} (${row.date})\n`;
+                            });
+                        } else {
+                            response += `\nNo !quote usage recorded yet.\n`;
+                        }
+
+                        if (topGuessRows?.length) {
+                            response += `\n**Top via !guess**\n`;
+                            topGuessRows.forEach((row, index) => {
+                                response += `**${index + 1}.** (${row.count}) "${row.quote}" - ${row.author} (${row.date})\n`;
+                            });
+                        } else {
+                            response += `\nNo !guess usage recorded yet.\n`;
+                        }
+
+                        message.channel.send(response);
+                        dbInstance.close();
+                    });
+                });
             });
         }
 });
