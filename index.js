@@ -304,12 +304,12 @@ client.on('messageCreate', message => {
                 GROUP BY command
             `;
 
-            const topQuery = `
-                SELECT q.quote, q.author, q.date, u.count
+            const topOverallQuery = `
+                SELECT q.quote, q.author, q.date, SUM(u.count) AS total
                 FROM quote_usage u
                 JOIN quotes q ON q.id = u.quote_id
-                WHERE u.command = ?
-                ORDER BY u.count DESC
+                GROUP BY u.quote_id
+                ORDER BY total DESC
                 LIMIT 10
             `;
 
@@ -326,47 +326,30 @@ client.on('messageCreate', message => {
                 const quoteTotal = totals.get('quote') ?? 0;
                 const guessTotal = totals.get('guess') ?? 0;
 
-                dbInstance.all(topQuery, ['quote'], (topQuoteErr, topQuoteRows) => {
-                    if (topQuoteErr) {
-                        console.error('Error fetching top quote stats:', topQuoteErr.message);
+                dbInstance.all(topOverallQuery, (topErr, topRows) => {
+                    if (topErr) {
+                        console.error('Error fetching top overall stats:', topErr.message);
                         message.channel.send('There was an error fetching stats.');
                         dbInstance.close();
                         return;
                     }
 
-                    dbInstance.all(topQuery, ['guess'], (topGuessErr, topGuessRows) => {
-                        if (topGuessErr) {
-                            console.error('Error fetching top guess stats:', topGuessErr.message);
-                            message.channel.send('There was an error fetching stats.');
-                            dbInstance.close();
-                            return;
-                        }
+                    let response = `**Stats**\n`;
+                    response += `Total served via !quote: **${quoteTotal}**\n`;
+                    response += `Total served via !guess: **${guessTotal}**\n`;
 
-                        let response = `**Stats**\n`;
-                        response += `Total served via !quote: **${quoteTotal}**\n`;
-                        response += `Total served via !guess: **${guessTotal}**\n`;
+                    if (topRows?.length) {
+                        response += `\n**Top quotes (overall)**\n`;
+                        topRows.forEach((row, index) => {
+                            const servedCount = row.total ?? 0;
+                            response += `**${index + 1}.** "${row.quote}" - ${row.author} (${row.date}) — served **${servedCount}** time(s)\n`;
+                        });
+                    } else {
+                        response += `\nNo quote usage recorded yet.\n`;
+                    }
 
-                        if (topQuoteRows?.length) {
-                            response += `\n**Top via !quote**\n`;
-                            topQuoteRows.forEach((row, index) => {
-                                response += `**${index + 1}.** (${row.count}) "${row.quote}" - ${row.author} (${row.date})\n`;
-                            });
-                        } else {
-                            response += `\nNo !quote usage recorded yet.\n`;
-                        }
-
-                        if (topGuessRows?.length) {
-                            response += `\n**Top via !guess**\n`;
-                            topGuessRows.forEach((row, index) => {
-                                response += `**${index + 1}.** (${row.count}) "${row.quote}" - ${row.author} (${row.date})\n`;
-                            });
-                        } else {
-                            response += `\nNo !guess usage recorded yet.\n`;
-                        }
-
-                        message.channel.send(response);
-                        dbInstance.close();
-                    });
+                    message.channel.send(response);
+                    dbInstance.close();
                 });
             });
         }
