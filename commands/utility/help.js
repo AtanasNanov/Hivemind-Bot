@@ -8,7 +8,6 @@ module.exports = {
 	async execute(interaction) {
 		const embed = new EmbedBuilder()
 			.setTitle('Available Commands')
-			.setColor(0x5865F2)
 			.addFields(
 				{
 					name: 'Slash Commands',
